@@ -1,16 +1,24 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:intl/intl.dart';
+import '../../core/di/injection.dart';
+import '../../domain/entities/user.dart';
+import '../bloc/chat_bloc.dart';
+import '../bloc/chat_event.dart';
+import '../bloc/chat_state.dart';
+import '../bloc/online_status_bloc.dart';
+import '../bloc/online_status_state.dart';
+import '../widgets/user_avatar.dart';
 
 class ChatScreen extends StatefulWidget {
-  final String userName;
-  final String userAvatar;
-  final bool isOnline;
+  final User receiver;
+  final String token;
 
   const ChatScreen({
-    super.key,
-    required this.userName,
-    required this.userAvatar,
-    this.isOnline = false,
-  });
+    Key? key,
+    required this.receiver,
+    required this.token,
+  }) : super(key: key);
 
   @override
   State<ChatScreen> createState() => _ChatScreenState();
@@ -19,36 +27,50 @@ class ChatScreen extends StatefulWidget {
 class _ChatScreenState extends State<ChatScreen> {
   final TextEditingController _messageController = TextEditingController();
   final ScrollController _scrollController = ScrollController();
+  late ChatBloc _chatBloc;
 
-  // Dummy messages
-  final List<ChatMessage> _messages = [
-    ChatMessage(
-      text: 'Hey! Are we still on for the meeting?',
-      isSentByMe: false,
-      time: '10:00 AM',
-    ),
-    ChatMessage(
-      text: 'Yes, definitely.',
-      isSentByMe: true,
-      time: '10:01 AM',
-      isRead: true,
-    ),
-    ChatMessage(
-      text: 'I\'ll send the brief shortly.',
-      isSentByMe: true,
-      time: '10:01 AM',
-      isRead: true,
-    ),
-    ChatMessage(
-      text: '...',
-      isSentByMe: false,
-      time: '',
-      isTyping: true,
-    ),
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _chatBloc = Injection.chatBloc;
+    _chatBloc.add(InitializeChatEvent(
+      receiver: widget.receiver,
+      token: widget.token,
+    ));
+
+    _scrollController.addListener(_onScroll);
+    _messageController.addListener(_onTextChanged);
+  }
+
+  void _onScroll() {
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent * 0.9) {
+      if (!_chatBloc.state.isLoadingMore && _chatBloc.state.hasMore) {
+        _chatBloc.add(const LoadChatHistoryEvent(loadMore: true));
+      }
+    }
+  }
+
+  void _onTextChanged() {
+    if (_messageController.text.isNotEmpty) {
+      _chatBloc.add(const TypingEvent());
+    } else {
+      _chatBloc.add(const StopTypingEvent());
+    }
+  }
+
+  void _sendMessage() {
+    final content = _messageController.text.trim();
+    if (content.isNotEmpty) {
+      _chatBloc.add(SendMessageEvent(content: content));
+      _messageController.clear();
+    }
+  }
+  
 
   @override
   void dispose() {
+    _chatBloc.add(const DisposeChatEvent());
     _messageController.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -56,180 +78,196 @@ class _ChatScreenState extends State<ChatScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF5F5F7),
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: Color(0xFF1C1C1E)),
-          onPressed: () => Navigator.pop(context),
-        ),
-        title: Row(
-          children: [
-            Stack(
-              children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF8B4513),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Center(
-                    child: Text(
-                      widget.userAvatar,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
-                  ),
-                ),
-                if (widget.isOnline)
-                  Positioned(
-                    bottom: 0,
-                    right: 0,
-                    child: Container(
-                      width: 12,
-                      height: 12,
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF34C759),
-                        border: Border.all(
-                          color: Colors.white,
-                          width: 2,
-                        ),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-            const SizedBox(width: 12),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  widget.userName,
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF1C1C1E),
-                  ),
-                ),
-                if (widget.isOnline)
-                  const Text(
-                    'Online',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Color(0xFF34C759),
-                    ),
-                  ),
-              ],
-            ),
-          ],
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.more_vert, color: Color(0xFF1C1C1E)),
-            onPressed: () {
-              // TODO: Show options menu
-            },
+    return MultiBlocProvider(
+      providers: [
+        BlocProvider.value(value: _chatBloc),
+        BlocProvider.value(value: Injection.onlineStatusBloc),
+      ],
+      child: Scaffold(
+        backgroundColor: const Color(0xFFF5F5F7),
+        appBar: AppBar(
+          backgroundColor: Colors.white,
+          elevation: 0,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back, color: Color(0xFF1C1C1E)),
+            onPressed: () => Navigator.pop(context),
           ),
-        ],
-      ),
-      body: Column(
-        children: [
-          // Date divider
-          Padding(
-            padding: const EdgeInsets.symmetric(vertical: 16.0),
-            child: Center(
-              child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 12,
-                  vertical: 6,
-                ),
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.5),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: const Text(
-                  'Today',
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: Color(0xFF8E8E93),
-                  ),
+          title: Row(
+            children: [
+              UserAvatar(
+                avatarUrl: widget.receiver.avatar,
+                username: widget.receiver.username,
+                radius: 20,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      widget.receiver.username,
+                      style: const TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF1C1C1E),
+                      ),
+                    ),
+                    BlocBuilder<ChatBloc, ChatState>(
+                      builder: (context, chatState) {
+                        if (chatState.isTyping) {
+                          return Text(
+                            'typing...',
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.green[600],
+                              fontStyle: FontStyle.italic,
+                            ),
+                          );
+                        }
+                        return BlocBuilder<OnlineStatusBloc, OnlineStatusState>(
+                          builder: (context, onlineState) {
+                            final isOnline = onlineState.isUserOnline(widget.receiver.id);
+                            return Text(
+                              chatState.isConnected
+                                  ? (isOnline ? 'online' : 'offline')
+                                  : 'Connecting...',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: chatState.isConnected
+                                    ? (isOnline
+                                        ? const Color(0xFF34C759)
+                                        : const Color(0xFF8E8E93))
+                                    : Colors.orange[600],
+                              ),
+                            );
+                          },
+                        );
+                      },
+                    ),
+                  ],
                 ),
               ),
-            ),
+            ],
           ),
-
-          // Messages
-          Expanded(
-            child: ListView.builder(
-              controller: _scrollController,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              itemCount: _messages.length,
-              itemBuilder: (context, index) {
-                final message = _messages[index];
-                return _buildMessageBubble(message);
-              },
-            ),
-          ),
-
-          // Message Input
-          Container(
-            color: Colors.white,
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                // Emoji button
-                IconButton(
-                  icon: const Icon(
-                    Icons.emoji_emotions_outlined,
-                    color: Color(0xFF8E8E93),
-                  ),
-                  onPressed: () {
-                    // TODO: Show emoji picker
-                  },
-                ),
-                const SizedBox(width: 8),
-
-                // Text input
-                Expanded(
-                  child: TextField(
-                    controller: _messageController,
-                    decoration: InputDecoration(
-                      hintText: 'Type a message...',
-                      hintStyle: const TextStyle(
-                        color: Color(0xFFC7C7CC),
+        ),
+        body: Column(
+          children: [
+            Expanded(
+              child: BlocConsumer<ChatBloc, ChatState>(
+                listener: (context, state) {
+                  if (state.error != null) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(state.error!),
+                        backgroundColor: Colors.red,
                       ),
-                      border: InputBorder.none,
-                      contentPadding: EdgeInsets.zero,
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 8),
+                    );
+                  }
+                },
+                builder: (context, state) {
+                  if (state.isLoading) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
 
-                // Attachment button
-                IconButton(
-                  icon: const Icon(
-                    Icons.attach_file,
-                    color: Color(0xFF8E8E93),
-                  ),
-                  onPressed: () {
-                    // TODO: Handle attachment
-                  },
-                ),
-                const SizedBox(width: 8),
+                  if (state.messages.isEmpty) {
+                    return Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.chat_bubble_outline,
+                            size: 64,
+                            color: Colors.grey[400],
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            'No messages yet',
+                            style: TextStyle(
+                              fontSize: 16,
+                              color: Colors.grey[600],
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+                          Text(
+                            'Start a conversation with ${widget.receiver.username}',
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: Colors.grey[500],
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  }
 
-                // Send button
-                Container(
+                  return ListView.builder(
+                    controller: _scrollController,
+                    reverse: true,
+                    padding: const EdgeInsets.all(16),
+                    itemCount: state.messages.length +
+                        (state.isLoadingMore ? 1 : 0),
+                    itemBuilder: (context, index) {
+                      if (state.isLoadingMore && index == state.messages.length) {
+                        return const Center(
+                          child: Padding(
+                            padding: EdgeInsets.all(8.0),
+                            child: CircularProgressIndicator(),
+                          ),
+                        );
+                      }
+
+                      final message = state.messages[index];
+                      final isMe = message.sender.id != widget.receiver.id;
+
+                      return _MessageBubble(
+                        message: message,
+                        isMe: isMe,
+                        isRead: state.readReceipts[message.id] ?? message.read,
+                      );
+                    },
+                  );
+                },
+              ),
+            ),
+            _buildMessageInput(),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMessageInput() {
+    return Container(
+      color: Colors.white,
+      padding: const EdgeInsets.all(16),
+      child: SafeArea(
+        child: Row(
+          children: [
+            Expanded(
+              child: TextField(
+                controller: _messageController,
+                decoration: const InputDecoration(
+                  hintText: 'Type a message...',
+                  hintStyle: TextStyle(
+                    color: Color(0xFFC7C7CC),
+                  ),
+                  border: InputBorder.none,
+                  contentPadding: EdgeInsets.zero,
+                ),
+                maxLines: null,
+                textCapitalization: TextCapitalization.sentences,
+              ),
+            ),
+            const SizedBox(width: 8),
+            BlocBuilder<ChatBloc, ChatState>(
+              builder: (context, state) {
+                return Container(
                   width: 44,
                   height: 44,
                   decoration: BoxDecoration(
-                    color: const Color(0xFF4A8FFF),
+                    color: state.isConnected
+                        ? const Color(0xFF4A8FFF)
+                        : const Color(0xFF8E8E93),
                     borderRadius: BorderRadius.circular(22),
                   ),
                   child: IconButton(
@@ -238,10 +276,81 @@ class _ChatScreenState extends State<ChatScreen> {
                       color: Colors.white,
                       size: 20,
                     ),
-                    onPressed: () {
-                      // TODO: Send message
-                    },
+                    onPressed: state.isConnected ? _sendMessage : null,
                   ),
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _MessageBubble extends StatelessWidget {
+  final dynamic message;
+  final bool isMe;
+  final bool isRead;
+
+  const _MessageBubble({
+    Key? key,
+    required this.message,
+    required this.isMe,
+    required this.isRead,
+  }) : super(key: key);
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Row(
+        mainAxisAlignment:
+            isMe ? MainAxisAlignment.end : MainAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.end,
+        children: [
+          Flexible(
+            child: Column(
+              crossAxisAlignment:
+                  isMe ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+              children: [
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: isMe ? const Color(0xFF4A8FFF) : Colors.white,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    message.content,
+                    style: TextStyle(
+                      fontSize: 15,
+                      color: isMe ? Colors.white : const Color(0xFF1C1C1E),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      _formatTime(message.createdAt),
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: Color(0xFF8E8E93),
+                      ),
+                    ),
+                    if (isMe) ...[
+                      const SizedBox(width: 4),
+                      Icon(
+                        isRead ? Icons.done_all : Icons.check,
+                        size: 14,
+                        color: isRead ? const Color(0xFF4A8FFF) : const Color(0xFF8E8E93),
+                      ),
+                    ],
+                  ],
                 ),
               ],
             ),
@@ -251,185 +360,19 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
-  Widget _buildMessageBubble(ChatMessage message) {
-    if (message.isTyping) {
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 16.0),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            Container(
-              width: 30,
-              height: 30,
-              decoration: BoxDecoration(
-                color: const Color(0xFF8B4513),
-                borderRadius: BorderRadius.circular(15),
-              ),
-              child: Center(
-                child: Text(
-                  widget.userAvatar,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 12,
-              ),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Row(
-                children: [
-                  _buildTypingDot(0),
-                  const SizedBox(width: 4),
-                  _buildTypingDot(150),
-                  const SizedBox(width: 4),
-                  _buildTypingDot(300),
-                ],
-              ),
-            ),
-          ],
-        ),
-      );
+  String _formatTime(DateTime dateTime) {
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    final messageDate = DateTime(dateTime.year, dateTime.month, dateTime.day);
+
+    if (messageDate == today) {
+      return DateFormat('HH:mm').format(dateTime);
+    } else if (messageDate == today.subtract(const Duration(days: 1))) {
+      return 'Yesterday ${DateFormat('HH:mm').format(dateTime)}';
+    } else if (now.difference(messageDate).inDays < 7) {
+      return DateFormat('EEE HH:mm').format(dateTime);
+    } else {
+      return DateFormat('MMM d, HH:mm').format(dateTime);
     }
-
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 16.0),
-      child: Row(
-        mainAxisAlignment:
-            message.isSentByMe ? MainAxisAlignment.end : MainAxisAlignment.start,
-        crossAxisAlignment: CrossAxisAlignment.end,
-        children: [
-          if (!message.isSentByMe) ...[
-            Container(
-              width: 30,
-              height: 30,
-              decoration: BoxDecoration(
-                color: const Color(0xFF8B4513),
-                borderRadius: BorderRadius.circular(15),
-              ),
-              child: Center(
-                child: Text(
-                  widget.userAvatar,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-          ],
-          Column(
-            crossAxisAlignment: message.isSentByMe
-                ? CrossAxisAlignment.end
-                : CrossAxisAlignment.start,
-            children: [
-              Container(
-                constraints: BoxConstraints(
-                  maxWidth: MediaQuery.of(context).size.width * 0.7,
-                ),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 12,
-                ),
-                decoration: BoxDecoration(
-                  color: message.isSentByMe
-                      ? const Color(0xFF4A8FFF)
-                      : Colors.white,
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                child: Text(
-                  message.text,
-                  style: TextStyle(
-                    fontSize: 15,
-                    color: message.isSentByMe
-                        ? Colors.white
-                        : const Color(0xFF1C1C1E),
-                  ),
-                ),
-              ),
-              if (message.time.isNotEmpty)
-                Padding(
-                  padding: const EdgeInsets.only(top: 4, left: 8, right: 8),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        message.time,
-                        style: const TextStyle(
-                          fontSize: 11,
-                          color: Color(0xFF8E8E93),
-                        ),
-                      ),
-                      if (message.isSentByMe) ...[
-                        const SizedBox(width: 4),
-                        Icon(
-                          message.isRead ? Icons.done_all : Icons.check,
-                          size: 14,
-                          color: const Color(0xFF4A8FFF),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-            ],
-          ),
-        ],
-      ),
-    );
   }
-
-  Widget _buildTypingDot(int delay) {
-    return TweenAnimationBuilder<double>(
-      tween: Tween(begin: 0.0, end: 1.0),
-      duration: const Duration(milliseconds: 600),
-      builder: (context, value, child) {
-        return Container(
-          width: 8,
-          height: 8,
-          decoration: BoxDecoration(
-            color: Color.lerp(
-              const Color(0xFFC7C7CC),
-              const Color(0xFF8E8E93),
-              value,
-            ),
-            borderRadius: BorderRadius.circular(4),
-          ),
-        );
-      },
-      onEnd: () {
-        Future.delayed(Duration(milliseconds: delay), () {
-          if (mounted) {
-            setState(() {});
-          }
-        });
-      },
-    );
-  }
-}
-
-class ChatMessage {
-  final String text;
-  final bool isSentByMe;
-  final String time;
-  final bool isRead;
-  final bool isTyping;
-
-  ChatMessage({
-    required this.text,
-    required this.isSentByMe,
-    required this.time,
-    this.isRead = false,
-    this.isTyping = false,
-  });
 }

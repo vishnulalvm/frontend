@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import 'core/di/injection.dart';
-import 'presentation/pages/login_screen.dart';
+import 'presentation/bloc/auth_event.dart';
+import 'presentation/pages/splash_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -15,7 +16,7 @@ class JustChatApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return BlocProvider(
-      create: (context) => Injection.authBloc,
+      create: (context) => Injection.authBloc..add(CheckAuthStatusEvent()),
       child: MaterialApp(
         title: 'Just Chat',
         debugShowCheckedModeBanner: false,
@@ -26,7 +27,7 @@ class JustChatApp extends StatelessWidget {
           ),
           scaffoldBackgroundColor: const Color(0xFFF5F5F7),
         ),
-        home: const LoginScreen(),
+        home: const SplashScreen(),
       ),
     );
   }

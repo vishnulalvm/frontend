@@ -12,6 +12,8 @@ class UserModel extends User {
     required String avatar,
     required String status,
     required String token,
+    DateTime? createdAt,
+    DateTime? updatedAt,
   }) : super(
           id: id,
           username: username,
@@ -19,17 +21,25 @@ class UserModel extends User {
           avatar: avatar,
           status: status,
           token: token,
+          createdAt: createdAt,
+          updatedAt: updatedAt,
         );
 
   factory UserModel.fromJson(Map<String, dynamic> json) {
     // Handle the response format from your API
     return UserModel(
-      id: json['_id'] as String,
-      username: json['username'] as String,
-      email: json['email'] as String,
-      avatar: json['avatar'] as String,
-      status: json['status'] as String? ?? 'offline',
-      token: json['token'] as String,
+      id: (json['_id'] ?? json['id'] ?? '') as String,
+      username: (json['username'] ?? '') as String,
+      email: (json['email'] ?? '') as String,
+      avatar: (json['avatar'] ?? 'https://ui-avatars.com/api/?name=${json['username'] ?? 'User'}&background=4A8FFF&color=fff') as String,
+      status: (json['status'] ?? 'offline') as String,
+      token: (json['token'] ?? '') as String,
+      createdAt: json['createdAt'] != null
+          ? DateTime.parse(json['createdAt'] as String)
+          : null,
+      updatedAt: json['updatedAt'] != null
+          ? DateTime.parse(json['updatedAt'] as String)
+          : null,
     );
   }
 
@@ -43,6 +53,8 @@ class UserModel extends User {
       avatar: avatar,
       status: status,
       token: token,
+      createdAt: createdAt,
+      updatedAt: updatedAt,
     );
   }
 }

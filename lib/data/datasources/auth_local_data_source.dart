@@ -4,6 +4,7 @@ import '../models/user_model.dart';
 
 abstract class AuthLocalDataSource {
   Future<void> saveUser(UserModel user);
+  Future<UserModel?> getSavedUser();
   Future<String?> getToken();
   Future<void> clearUser();
   Future<bool> isLoggedIn();
@@ -22,6 +23,28 @@ class AuthLocalDataSourceImpl implements AuthLocalDataSource {
     await sharedPreferences.setString(StorageKeys.userEmail, user.email);
     await sharedPreferences.setString(StorageKeys.userAvatar, user.avatar);
     await sharedPreferences.setString(StorageKeys.userStatus, user.status);
+  }
+
+  @override
+  Future<UserModel?> getSavedUser() async {
+    final token = sharedPreferences.getString(StorageKeys.token);
+    final userId = sharedPreferences.getString(StorageKeys.userId);
+    final username = sharedPreferences.getString(StorageKeys.username);
+    final userEmail = sharedPreferences.getString(StorageKeys.userEmail);
+    final userAvatar = sharedPreferences.getString(StorageKeys.userAvatar);
+    final userStatus = sharedPreferences.getString(StorageKeys.userStatus);
+
+    if (token != null && userId != null && username != null && userEmail != null) {
+      return UserModel(
+        id: userId,
+        username: username,
+        email: userEmail,
+        avatar: userAvatar ?? 'https://ui-avatars.com/api/?name=$username&background=4A8FFF&color=fff',
+        status: userStatus ?? 'offline',
+        token: token,
+      );
+    }
+    return null;
   }
 
   @override
